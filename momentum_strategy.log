@@ -1,0 +1,20 @@
+2025-07-02 15:22:12,956 - momentum_strategy - INFO - Using test data instead of real exchange
+2025-07-02 15:22:12,956 - momentum_strategy - INFO - Running in TEST MODE - no real trades will be executed
+2025-07-02 15:22:12,956 - momentum_strategy - INFO - Calculating momentum factors...
+2025-07-02 15:22:12,966 - momentum_strategy - INFO - Top performers: AVAX/USDT (0.1537), BTC/USDT (0.1324)
+2025-07-02 15:22:12,966 - momentum_strategy - INFO - Bottom performers: SOL/USDT (-0.2145), XRP/USDT (-0.1417)
+2025-07-02 15:22:12,966 - momentum_strategy - INFO - Mock positions: {'AVAX/USDT': Decimal('0'), 'ADA/USDT': Decimal('0'), 'BNB/USDT': Decimal('0'), 'XRP/USDT': Decimal('0'), 'WLD/USDT': Decimal('0'), 'SOL/USDT': Decimal('0'), 'DOGE/USDT': Decimal('0'), 'TON/USDT': Decimal('0'), 'BTC/USDT': Decimal('0'), 'ETH/USDT': Decimal('0')}
+2025-07-02 15:22:12,966 - momentum_strategy - INFO - TEST: Would open LONG position for AVAX/USDT: 8.000000 @ $25
+2025-07-02 15:22:12,966 - momentum_strategy - INFO - TEST: Would open SHORT position for XRP/USDT: 400.000000 @ $0.5
+2025-07-02 15:22:12,966 - momentum_strategy - INFO - TEST: Would open SHORT position for SOL/USDT: 2.000000 @ $100
+2025-07-02 15:22:12,966 - momentum_strategy - INFO - TEST: Would open LONG position for BTC/USDT: 0.004444 @ $45000
+2025-07-02 15:30:32,381 - momentum_strategy - INFO - Using test data instead of real exchange
+2025-07-02 15:30:32,381 - momentum_strategy - INFO - Running in TEST MODE - no real trades will be executed
+2025-07-02 15:30:32,381 - momentum_strategy - INFO - Calculating momentum factors...
+2025-07-02 15:30:32,395 - momentum_strategy - INFO - Top performers: XRP/USDT (0.1880), SOL/USDT (0.1516)
+2025-07-02 15:30:32,395 - momentum_strategy - INFO - Bottom performers: WLD/USDT (-0.1953), BTC/USDT (-0.1314)
+2025-07-02 15:30:32,395 - momentum_strategy - INFO - Mock positions: {'WLD/USDT': Decimal('0'), 'BNB/USDT': Decimal('0'), 'AVAX/USDT': Decimal('0'), 'SOL/USDT': Decimal('0'), 'ETH/USDT': Decimal('0'), 'BTC/USDT': Decimal('0'), 'ADA/USDT': Decimal('0'), 'TON/USDT': Decimal('0'), 'DOGE/USDT': Decimal('0'), 'XRP/USDT': Decimal('0')}
+2025-07-02 15:30:32,395 - momentum_strategy - INFO - TEST: Would open SHORT position for WLD/USDT: 66.666667 @ $3.0
+2025-07-02 15:30:32,395 - momentum_strategy - INFO - TEST: Would open LONG position for SOL/USDT: 2.000000 @ $100
+2025-07-02 15:30:32,395 - momentum_strategy - INFO - TEST: Would open SHORT position for BTC/USDT: 0.004444 @ $45000
+2025-07-02 15:30:32,395 - momentum_strategy - INFO - TEST: Would open LONG position for XRP/USDT: 400.000000 @ $0.5

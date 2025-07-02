@@ -1,0 +1,6 @@
+ccxt==4.1.77
+pandas==2.1.4
+pandas-ta==0.3.14b0
+numpy==1.24.3
+python-dotenv==1.0.0
+asyncio==3.4.3 

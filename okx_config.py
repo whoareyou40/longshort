@@ -1,0 +1,37 @@
+import os
+from decimal import Decimal
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class OKXConfig:
+    # Exchange configuration
+    EXCHANGE_ID = 'okx'
+    API_KEY = os.getenv('OKX_API_KEY', '')
+    SECRET_KEY = os.getenv('OKX_SECRET_KEY', '')
+    PASSPHRASE = os.getenv('OKX_PASSPHRASE', '')
+    SANDBOX = os.getenv('OKX_SANDBOX', 'true').lower() == 'true'
+    
+    # Strategy parameters - Top 100 by market cap (as of July 2024, USDT contracts)
+    TRADING_PAIRS = {
+        'BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT', 'TON/USDT:USDT', 'DOGE/USDT:USDT', 'XRP/USDT:USDT', 'PI/USDT:USDT', 'SAHARA/USDT:USDT', 'PEPE/USDT:USDT', '1INCH/USDT:USDT', 'A/USDT:USDT', 'AAVE/USDT:USDT', 'ACE/USDT:USDT', 'ACH/USDT:USDT', 'ACT/USDT:USDT', 'ADA/USDT:USDT', 'AEVO/USDT:USDT', 'AGLD/USDT:USDT', 'AI16Z/USDT:USDT', 'AIDOGE/USDT:USDT', 'AIXBT/USDT:USDT', 'ALCH/USDT:USDT', 'ALGO/USDT:USDT', 'ALPHA/USDT:USDT', 'ANIME/USDT:USDT', 'APE/USDT:USDT', 'API3/USDT:USDT', 'APT/USDT:USDT', 'AR/USDT:USDT', 'ARB/USDT:USDT', 'ARC/USDT:USDT', 'ARKM/USDT:USDT', 'ATH/USDT:USDT', 'ATOM/USDT:USDT', 'AUCTION/USDT:USDT', 'AVAX/USDT:USDT', 'AVAAI/USDT:USDT', 'AXS/USDT:USDT', 'BABY/USDT:USDT', 'BADGER/USDT:USDT', 'BAL/USDT:USDT', 'BAND/USDT:USDT', 'BAT/USDT:USDT', 'BCH/USDT:USDT', 'BERA/USDT:USDT', 'BICO/USDT:USDT', 'BIGTIME/USDT:USDT', 'BIO/USDT:USDT', 'BLUR/USDT:USDT', 'BNB/USDT:USDT', 'BNT/USDT:USDT', 'BOME/USDT:USDT', 'BONK/USDT:USDT', 'BRETT/USDT:USDT', 'CAT/USDT:USDT', 'CATI/USDT:USDT', 'CELO/USDT:USDT', 'CETUS/USDT:USDT', 'CFX/USDT:USDT', 'CHZ/USDT:USDT', 'COMP/USDT:USDT', 'COOKIE/USDT:USDT', 'CORE/USDT:USDT', 'CRO/USDT:USDT', 'CRV/USDT:USDT', 'CSPR/USDT:USDT', 'CTC/USDT:USDT', 'CVC/USDT:USDT', 'CVX/USDT:USDT', 'DEGEN/USDT:USDT', 'DGB/USDT:USDT', 'DOGS/USDT:USDT', 'DOG/USDT:USDT', 'DOOD/USDT:USDT', 'DOT/USDT:USDT', 'DUCK/USDT:USDT', 'DYDX/USDT:USDT', 'EGLD/USDT:USDT', 'EIGEN/USDT:USDT', 'ENJ/USDT:USDT', 'ENS/USDT:USDT', 'ETC/USDT:USDT', 'ETHW/USDT:USDT', 'ETHFI/USDT:USDT', 'FARTCOIN/USDT:USDT', 'FIL/USDT:USDT', 'FLM/USDT:USDT', 'FLOKI/USDT:USDT', 'FLOW/USDT:USDT', 'FXS/USDT:USDT', 'GALA/USDT:USDT', 'GAS/USDT:USDT', 'GLM/USDT:USDT', 'GMT/USDT:USDT', 'GMX/USDT:USDT', 'GOAT/USDT:USDT', 'GODS/USDT:USDT', 'GPS/USDT:USDT', 'GRASS/USDT:USDT', 'GRIFFAIN/USDT:USDT'
+    }
+    
+    # Strategy settings
+    TARGET_VALUE = Decimal("15")  # USD amount per position
+    BUY_INTERVAL = 60 * 60 * 4  # 4 hours in seconds
+    CANDLE_INTERVAL = "1h"  # OKX uses "1h" format
+    
+    MAX_CANDLES = 200
+    
+    # Risk management
+    MAX_POSITIONS = 6  # Maximum number of positions (2 long + 2 short)
+    LONG_TOP_N = 3  # Number of coins to long
+    SHORT_BOTTOM_N = 3  # Number of coins to short
+    
+    # OKX specific settings
+    LEVERAGE = 20  # Default leverage (1x = no leverage)
+    MARGIN_MODE = 'cross'  # 'cross' or 'isolated'
+    
+    # Logging
+    LOG_LEVEL = "INFO" 
