@@ -291,6 +291,47 @@ class OKXMomentumStrategy:
             self.logger.error(f"Error calculating order amount for {trading_pair}: {e}", exc_info=True)
             return None
 
+    def round_amount(self, trading_pair: str, amount: float) -> Optional[float]:
+        """Round amount to market precision"""
+        try:
+            if amount <= 0:
+                return None
+            
+            if trading_pair not in self.market_precision:
+                self.logger.error(f"Market precision data not found for {trading_pair}")
+                return None
+
+            precision_data = self.market_precision[trading_pair]
+            min_amount = precision_data['min_amount']
+            amount_precision = precision_data['amount_precision']
+
+            # 获取合约面值
+            market = self.exchange.market(trading_pair)
+            contract_size = float(market.get('contractSize', 1))
+
+            # 计算张数（U本位永续：order_amount = value / (contract_size * price)）
+            # 这里假设传入的amount已经是张数，所以不需要再除以price
+            order_amount = abs(amount)
+
+            # 精度处理
+            if isinstance(amount_precision, float):
+                precision = int(abs(math.log10(amount_precision)))
+                order_amount = round(order_amount, precision)
+            else:
+                # 有些合约只允许整数张
+                order_amount = int(round(order_amount))
+
+            # 检查最小下单量
+            if order_amount < min_amount:
+                self.logger.warning(f"Order amount {order_amount} for {trading_pair} is less than min amount {min_amount}")
+                return None
+
+            return order_amount
+            
+        except Exception as e:
+            self.logger.error(f"Error rounding amount for {trading_pair}: {e}")
+            return None
+
     def set_leverage_and_margin_mode(self, trading_pair: str):
         """Set leverage to 20x and cross margin mode for OKX"""
         try:
@@ -358,17 +399,10 @@ class OKXMomentumStrategy:
                 if order_amount is None:
                     continue
                 
-                # Skip opening new positions if already have a position
-                if current_value != 0 and (current_status == 1 or current_status == -1):
-                    self.logger.info(f"Already have position for {trading_pair}, skipping opening new position.")
-                    continue
-                
-                # Handle long position opening
+                # 只做基础开仓/平仓，不做动态补仓/减仓
                 if current_status == 1 and current_value == 0:
-                    # Set leverage and margin mode before opening position
+                    # 开多头
                     self.set_leverage_and_margin_mode(trading_pair)
-                    
-                    # Open long position
                     order = self.place_order(
                         trading_pair=trading_pair,
                         side='buy',
@@ -377,16 +411,11 @@ class OKXMomentumStrategy:
                         pos_side='long',
                         reduce_only=False
                     )
-                    
                     if order:
                         self.logger.info(f"Opened long position for {trading_pair}: {order_amount}")
-                    
-                # Handle short position opening
                 elif current_status == -1 and current_value == 0:
-                    # Set leverage and margin mode before opening position
+                    # 开空头
                     self.set_leverage_and_margin_mode(trading_pair)
-                    
-                    # Open short position
                     order = self.place_order(
                         trading_pair=trading_pair,
                         side='sell',
@@ -395,13 +424,10 @@ class OKXMomentumStrategy:
                         pos_side='short',
                         reduce_only=False
                     )
-                    
                     if order:
                         self.logger.info(f"Opened short position for {trading_pair}: {order_amount}")
-                    
-                # Handle long position closing
                 elif current_status == 0 and current_value > 0:
-                    # Close long position
+                    # 平多头
                     close_amount = float(abs(self.asset_amount[trading_pair]))
                     order = self.place_order(
                         trading_pair=trading_pair,
@@ -411,13 +437,10 @@ class OKXMomentumStrategy:
                         pos_side='long',
                         reduce_only=True
                     )
-                    
                     if order:
                         self.logger.info(f"Closed long position for {trading_pair}: {close_amount}")
-                    
-                # Handle short position closing
                 elif current_status == 0 and current_value < 0:
-                    # Close short position
+                    # 平空头
                     close_amount = float(abs(self.asset_amount[trading_pair]))
                     order = self.place_order(
                         trading_pair=trading_pair,
@@ -427,10 +450,9 @@ class OKXMomentumStrategy:
                         pos_side='short',
                         reduce_only=True
                     )
-                    
                     if order:
                         self.logger.info(f"Closed short position for {trading_pair}: {close_amount}")
-                    
+                
             except Exception as e:
                 self.logger.error(f"Error creating order for {trading_pair}: {e}", exc_info=True)
                 
