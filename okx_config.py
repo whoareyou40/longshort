@@ -25,9 +25,9 @@ class OKXConfig:
     MAX_CANDLES = 200
     
     # Risk management
-    MAX_POSITIONS = 6  # Maximum number of positions (2 long + 2 short)
-    LONG_TOP_N = 3  # Number of coins to long
-    SHORT_BOTTOM_N = 3  # Number of coins to short
+    MAX_POSITIONS = 2  # Maximum number of positions (2 long + 2 short)
+    LONG_TOP_N = 1  # Number of coins to long
+    SHORT_BOTTOM_N = 1  # Number of coins to short
     
     # OKX specific settings
     LEVERAGE = 20  # Default leverage (1x = no leverage)
