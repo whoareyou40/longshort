@@ -8,17 +8,16 @@ from typing import Dict, List, Optional
 import logging
 import time
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from okx_config import OKXConfig
 
-class OKXMomentumStrategy:
+class OKXWeekendReverseStrategy:
     """
-    OKX-specific momentum strategy that:
-    - Calculates 24h price changes for all trading pairs
-    - Takes long positions in top 2 performers
-    - Takes short positions in bottom 2 performers
-    - Closes positions for middle performers
-    - Uses OKX-specific API calls and trading pair formats
+    OKX周末反向策略：
+    - 在周末（周五晚上到周一早上）运行反向策略
+    - 动量最高的做空，动量最低的做多
+    - 利用周末市场的均值回归效应
+    - 工作日恢复正常动量策略
     """
     
     def __init__(self):
@@ -62,13 +61,18 @@ class OKXMomentumStrategy:
         # Volatility lookback periods
         self.volatility_periods = 24  # 24小时波动率计算
         
+        # Weekend strategy parameters
+        self.weekend_start_hour = 20  # 周五晚上8点开始
+        self.weekend_end_hour = 8     # 周一早上8点结束
+        self.is_weekend_mode = False
+        
     def setup_logging(self):
         """Setup logging configuration"""
         logging.basicConfig(
             level=getattr(logging, self.config.LOG_LEVEL),
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler('okx_momentum_strategy.log'),
+                logging.FileHandler('okx_weekend_reverse_strategy.log'),
                 logging.StreamHandler()
             ]
         )
@@ -117,6 +121,30 @@ class OKXMomentumStrategy:
                 'last_update': 0
             }
             
+    def is_weekend_time(self) -> bool:
+        """
+        判断当前是否为周末策略时间
+        周五晚上8点到周一早上8点
+        """
+        now = datetime.now()
+        weekday = now.weekday()  # 0=Monday, 6=Sunday
+        hour = now.hour
+        
+        # 周五晚上8点后
+        if weekday == 4 and hour >= self.weekend_start_hour:
+            return True
+        # 周六全天
+        elif weekday == 5:
+            return True
+        # 周日全天
+        elif weekday == 6:
+            return True
+        # 周一早上8点前
+        elif weekday == 0 and hour < self.weekend_end_hour:
+            return True
+        
+        return False
+    
     async def fetch_candles(self, symbol: str, timeframe: str = '1H', limit: int = 200):
         """Fetch OHLCV candles from OKX exchange"""
         try:
@@ -323,8 +351,17 @@ class OKXMomentumStrategy:
             }
             
     async def get_factor(self):
-        """Calculate momentum factors using enhanced multi-factor approach"""
+        """Calculate momentum factors using enhanced multi-factor approach with weekend reverse logic"""
         self.logger.info("Calculating enhanced multi-factor momentum...")
+        
+        # 检查是否为周末模式
+        weekend_mode = self.is_weekend_time()
+        if weekend_mode != self.is_weekend_mode:
+            self.is_weekend_mode = weekend_mode
+            if weekend_mode:
+                self.logger.info("🔄 切换到周末反向策略模式")
+            else:
+                self.logger.info("🔄 切换到工作日正常动量策略模式")
         
         for trading_pair in self.config.TRADING_PAIRS:
             try:
@@ -364,8 +401,19 @@ class OKXMomentumStrategy:
             long_n = getattr(self.config, 'LONG_TOP_N', 2)
             short_n = getattr(self.config, 'SHORT_BOTTOM_N', 2)
             if len(sorted_keys) >= long_n + short_n:
-                long_keys = sorted_keys[-long_n:]
-                short_keys = sorted_keys[:short_n]
+                # 关键区别：根据是否为周末模式决定交易方向
+                if self.is_weekend_mode:
+                    # 周末反向策略：动量最高的做空，动量最低的做多
+                    long_keys = sorted_keys[:short_n]  # 动量最低的做多
+                    short_keys = sorted_keys[-long_n:]  # 动量最高的做空
+                    self.logger.info(f"📅 周末反向策略 - 动量最低的{short_n}个做多: {long_keys}")
+                    self.logger.info(f"📅 周末反向策略 - 动量最高的{long_n}个做空: {short_keys}")
+                else:
+                    # 工作日正常策略：动量最高的做多，动量最低的做空
+                    long_keys = sorted_keys[-long_n:]  # 动量最高的做多
+                    short_keys = sorted_keys[:short_n]  # 动量最低的做空
+                    self.logger.info(f"📅 工作日正常策略 - 动量最高的{long_n}个做多: {long_keys}")
+                    self.logger.info(f"📅 工作日正常策略 - 动量最低的{short_n}个做空: {short_keys}")
                 
                 # Reset all status and target values
                 for k in sorted_keys:
@@ -381,9 +429,6 @@ class OKXMomentumStrategy:
                 for k in short_keys:
                     self.target_value[k] = -self.config.TARGET_VALUE
                     self.status[k] = -1  # Short
-                
-                self.logger.info(f"Top {long_n} long: {long_keys}")
-                self.logger.info(f"Bottom {short_n} short: {short_keys}")
                 
                 # Log current positions that should be closed
                 current_positions = []
@@ -501,47 +546,6 @@ class OKXMomentumStrategy:
             self.logger.error(f"Error calculating order amount for {trading_pair}: {e}", exc_info=True)
             return None
 
-    def round_amount(self, trading_pair: str, amount: float) -> Optional[float]:
-        """Round amount to market precision"""
-        try:
-            if amount <= 0:
-                return None
-            
-            if trading_pair not in self.market_precision:
-                self.logger.error(f"Market precision data not found for {trading_pair}")
-                return None
-
-            precision_data = self.market_precision[trading_pair]
-            min_amount = precision_data['min_amount']
-            amount_precision = precision_data['amount_precision']
-
-            # 获取合约面值
-            market = self.exchange.market(trading_pair)
-            contract_size = float(market.get('contractSize', 1))
-
-            # 计算张数（U本位永续：order_amount = value / (contract_size * price)）
-            # 这里假设传入的amount已经是张数，所以不需要再除以price
-            order_amount = abs(amount)
-
-            # 精度处理
-            if isinstance(amount_precision, float):
-                precision = int(abs(math.log10(amount_precision)))
-                order_amount = round(order_amount, precision)
-            else:
-                # 有些合约只允许整数张
-                order_amount = int(round(order_amount))
-
-            # 检查最小下单量
-            if order_amount < min_amount:
-                self.logger.warning(f"Order amount {order_amount} for {trading_pair} is less than min amount {min_amount}")
-                return None
-
-            return order_amount
-            
-        except Exception as e:
-            self.logger.error(f"Error rounding amount for {trading_pair}: {e}")
-            return None
-
     def set_leverage_and_margin_mode(self, trading_pair: str):
         """Set leverage to 20x and cross margin mode for OKX"""
         try:
@@ -622,7 +626,8 @@ class OKXMomentumStrategy:
                         reduce_only=False
                     )
                     if order:
-                        self.logger.info(f"Opened long position for {trading_pair}: {order_amount}")
+                        strategy_type = "周末反向" if self.is_weekend_mode else "工作日正常"
+                        self.logger.info(f"[{strategy_type}] 开多头 {trading_pair}: {order_amount}")
                 elif current_status == -1 and current_value == 0:
                     # 开空头
                     self.set_leverage_and_margin_mode(trading_pair)
@@ -635,7 +640,8 @@ class OKXMomentumStrategy:
                         reduce_only=False
                     )
                     if order:
-                        self.logger.info(f"Opened short position for {trading_pair}: {order_amount}")
+                        strategy_type = "周末反向" if self.is_weekend_mode else "工作日正常"
+                        self.logger.info(f"[{strategy_type}] 开空头 {trading_pair}: {order_amount}")
                 elif current_status == 0 and current_value > 0:
                     # 平多头
                     close_amount = float(abs(self.asset_amount[trading_pair]))
@@ -648,7 +654,7 @@ class OKXMomentumStrategy:
                         reduce_only=True
                     )
                     if order:
-                        self.logger.info(f"Closed long position for {trading_pair}: {close_amount}")
+                        self.logger.info(f"平多头 {trading_pair}: {close_amount}")
                 elif current_status == 0 and current_value < 0:
                     # 平空头
                     close_amount = float(abs(self.asset_amount[trading_pair]))
@@ -661,62 +667,14 @@ class OKXMomentumStrategy:
                         reduce_only=True
                     )
                     if order:
-                        self.logger.info(f"Closed short position for {trading_pair}: {close_amount}")
+                        self.logger.info(f"平空头 {trading_pair}: {close_amount}")
                 
             except Exception as e:
                 self.logger.error(f"Error creating order for {trading_pair}: {e}", exc_info=True)
                 
-    async def print_positions_to_close(self):
-        """打印当前有持仓但不在开仓范围内的币种、方向、张数"""
-        try:
-            # 获取所有持仓（不查价格）
-            response = self.exchange.privateGetAccountPositions({'instType': 'SWAP'})
-            data = response.get('data', [])
-            current_positions = {}
-            for pos_data in data:
-                inst_id = pos_data.get('instId')
-                pos_side = pos_data.get('posSide', '').lower()
-                pos_value = pos_data.get('pos', '0')
-                if pos_value == '0' or pos_value == 0:
-                    continue
-                contracts = float(pos_value)
-                if contracts > 0:
-                    # 构造symbol
-                    if inst_id and '-USDT-SWAP' in inst_id:
-                        symbol = inst_id.replace('-USDT-SWAP', '/USDT:USDT')
-                    else:
-                        symbol = inst_id
-                    current_positions[symbol] = {
-                        'symbol': symbol,
-                        'inst_id': inst_id,
-                        'side': pos_side,
-                        'contracts': contracts,
-                    }
-            # 计算当前策略选中的币种
-            selected = set()
-            # 只保留当前status为1或-1的币种
-            for pair, status in self.status.items():
-                if status == 1 or status == -1:
-                    selected.add(pair)
-            # 打印不在开仓范围内的持仓
-            to_close = []
-            for symbol, pos_info in current_positions.items():
-                if symbol not in selected:
-                    to_close.append(pos_info)
-            if to_close:
-                print("\n🚨 当前有持仓但不在开仓范围内的币种:")
-                for pos in to_close:
-                    print(f"  - {pos['symbol']}: {pos['side']} {pos['contracts']} contracts")
-            else:
-                print("\n✅ 当前所有持仓都在策略开仓范围内")
-        except Exception as e:
-            print(f"❌ Error printing positions to close: {e}")
-            import traceback
-            traceback.print_exc()
-
     async def run_strategy(self):
         """Main strategy loop"""
-        self.logger.info("Starting OKX momentum strategy...")
+        self.logger.info("Starting OKX weekend reverse strategy...")
         
         while True:
             try:
@@ -730,13 +688,6 @@ class OKXMomentumStrategy:
                     await self.get_factor()
                     await self.cancel_all_orders()
                     await self.get_balance()
-                    
-                    # 打印当前有持仓但不在开仓范围内的币种
-                    await self.print_positions_to_close()
-                    
-                    # Close orphaned positions (not in current strategy)
-                    await self.close_orphaned_positions()
-                    
                     await self.create_order()
                     
                     self.last_ordered_ts = current_time
@@ -765,170 +716,13 @@ class OKXMomentumStrategy:
     async def stop(self):
         """Stop the strategy"""
         self.logger.info("Stopping strategy...")
-        # await self.exchange.close()
         self.logger.info("Exchange object does not require close().")
 
-    async def get_all_positions(self):
-        """Get all positions including those not in TRADING_PAIRS list"""
-        try:
-            print("🔍 get_all_positions 详细流程:")
-            print("   📡 调用 fetch_positions(params={'instType': 'SWAP'})...")
-            
-            # Fetch all positions with SWAP filter
-            positions = self.exchange.fetch_positions(params={'instType': 'SWAP'})
-            print(f"   📊 原始持仓数据: {len(positions)} 条记录")
-            
-            # Track all positions found
-            all_positions = {}
-            
-            for i, pos in enumerate(positions):
-                print(f"   📋 处理第 {i+1} 条持仓数据:")
-                print(f"      symbol: {pos.get('symbol', 'N/A')}")
-                print(f"      info: {pos.get('info', {})}")
-                
-                info = pos.get('info', {})
-                inst_id = info.get('instId')
-                pos_side = info.get('posSide', '').lower()
-                contracts = float(info.get('pos', 0))
-                symbol = pos.get('symbol')
-                
-                print(f"      inst_id: {inst_id}")
-                print(f"      pos_side: {pos_side}")
-                print(f"      contracts: {contracts}")
-                print(f"      symbol: {symbol}")
-                
-                # Only process positions with actual contracts
-                if contracts > 0:
-                    print(f"      ✅ 有持仓，获取价格...")
-                    # Get current price for this symbol
-                    try:
-                        ticker = self.exchange.fetch_ticker(symbol)
-                        current_price = Decimal(str(ticker['last']))
-                        
-                        position_info = {
-                            'symbol': symbol,
-                            'inst_id': inst_id,
-                            'side': pos_side,
-                            'contracts': contracts,
-                            'value': contracts * float(current_price),
-                            'price': current_price
-                        }
-                        all_positions[symbol] = position_info
-                        print(f"      ✅ 添加到持仓列表: {symbol} - {pos_side} {contracts} contracts")
-                        
-                    except Exception as e:
-                        print(f"      ❌ 获取价格失败: {symbol} - {e}")
-                        self.logger.warning(f"Could not get price for {symbol}: {e}")
-                else:
-                    print(f"      ❌ 零持仓，跳过")
-            
-            print(f"   📊 最终持仓数量: {len(all_positions)}")
-            return all_positions
-            
-        except Exception as e:
-            print(f"   ❌ get_all_positions 异常: {e}")
-            self.logger.error(f"Error fetching all positions: {e}", exc_info=True)
-            return {}
-
-    async def close_orphaned_positions(self):
-        """Close positions that are not in the current strategy's selected pairs (status 1 or -1)"""
-        try:
-            print("\n🔍 close_orphaned_positions 详细流程:")
-            print("=" * 50)
-            
-            # Get all current positions
-            print("📊 Step 1: 获取所有当前持仓...")
-            all_positions = await self.get_all_positions()
-            print(f"   找到 {len(all_positions)} 个持仓:")
-            for symbol, pos_info in all_positions.items():
-                print(f"   - {symbol}: {pos_info['side']} {pos_info['contracts']} contracts")
-            
-            # Get current strategy selected positions (status 1 or -1)
-            print(f"\n📋 Step 2: 获取当前策略选中的币种...")
-            selected_positions = set()
-            for pair, status in self.status.items():
-                if status == 1 or status == -1:
-                    selected_positions.add(pair)
-                    print(f"   ✅ 策略选中: {pair} (status: {status})")
-            
-            print(f"   策略选中 {len(selected_positions)} 个币种")
-            
-            # Find orphaned positions (not in selected strategy positions)
-            print(f"\n🔍 Step 3: 查找需要平仓的持仓...")
-            orphaned_positions = {}
-            for symbol, pos_info in all_positions.items():
-                if symbol not in selected_positions:
-                    orphaned_positions[symbol] = pos_info
-                    print(f"   🚨 需要平仓: {symbol} - {pos_info['side']} {pos_info['contracts']} contracts (不在当前策略选中范围内)")
-                else:
-                    print(f"   ✅ 保留持仓: {symbol} - {pos_info['side']} {pos_info['contracts']} contracts (在当前策略选中范围内)")
-            
-            print(f"\n📊 Step 4: 平仓统计...")
-            print(f"   总持仓数: {len(all_positions)}")
-            print(f"   策略选中持仓数: {len(all_positions) - len(orphaned_positions)}")
-            print(f"   需要平仓数: {len(orphaned_positions)}")
-            
-            if not orphaned_positions:
-                print("   ✅ 没有需要平仓的持仓")
-                return
-            
-            # Close orphaned positions
-            print(f"\n🔄 Step 5: 开始平仓...")
-            closed_count = 0
-            failed_count = 0
-            
-            for symbol, pos_info in orphaned_positions.items():
-                try:
-                    print(f"\n   📝 正在平仓: {symbol} - {pos_info['side']} {pos_info['contracts']} contracts")
-                    
-                    # Set leverage and margin mode
-                    print(f"   ⚙️ 设置杠杆和保证金模式...")
-                    self.set_leverage_and_margin_mode(symbol)
-                    
-                    # Close position
-                    if pos_info['side'] == 'long':
-                        print(f"   📤 平仓多头: 卖出 {pos_info['contracts']} 张")
-                        order = self.place_order(
-                            trading_pair=symbol,
-                            side='sell',
-                            order_type='market',
-                            amount=pos_info['contracts'],
-                            pos_side='long',
-                            reduce_only=True
-                        )
-                    elif pos_info['side'] == 'short':
-                        print(f"   📤 平仓空头: 买入 {pos_info['contracts']} 张")
-                        order = self.place_order(
-                            trading_pair=symbol,
-                            side='buy',
-                            order_type='market',
-                            amount=pos_info['contracts'],
-                            pos_side='short',
-                            reduce_only=True
-                        )
-                    
-                    if order:
-                        print(f"   ✅ 成功平仓: {symbol}")
-                        closed_count += 1
-                    else:
-                        print(f"   ❌ 平仓失败: {symbol}")
-                        failed_count += 1
-                        
-                except Exception as e:
-                    print(f"   ❌ 平仓异常: {symbol} - {e}")
-                    failed_count += 1
-                    self.logger.error(f"Error closing orphaned position {symbol}: {e}", exc_info=True)
-            
-            print(f"\n📊 Step 6: 平仓结果统计...")
-            print(f"   成功平仓: {closed_count} 个")
-            print(f"   平仓失败: {failed_count} 个")
-            print(f"   总计处理: {len(orphaned_positions)} 个持仓")
-            
-            if orphaned_positions:
-                self.logger.info(f"Found and processed {len(orphaned_positions)} orphaned positions")
-            else:
-                self.logger.debug("No orphaned positions found")
-                
-        except Exception as e:
-            print(f"❌ close_orphaned_positions 整体异常: {e}")
-            self.logger.error(f"Error in close_orphaned_positions: {e}", exc_info=True) 
+if __name__ == "__main__":
+    strategy = OKXWeekendReverseStrategy()
+    try:
+        asyncio.run(strategy.start())
+    except KeyboardInterrupt:
+        print("Strategy stopped by user")
+    except Exception as e:
+        print(f"Strategy error: {e}") 
